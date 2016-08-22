@@ -10,34 +10,84 @@ var User = require('./app/models/user');
 var Links = require('./app/collections/links');
 var Link = require('./app/models/link');
 var Click = require('./app/models/click');
+var session = require('express-session');
+var bodyParser = require('body-parser');
 
 var app = express();
+var sess;
+
 
 app.set('views', __dirname + '/views');
 app.set('view engine', 'ejs');
 app.use(partials());
 // Parse JSON (uniform resource locators)
+app.use(session({secret: 'ssshhhhh'}));
 app.use(bodyParser.json());
 // Parse forms (signup/login)
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(__dirname + '/public'));
 
 
-app.get('/', 
-function(req, res) {
-  res.render('index');
+app.get('/', function(req, res) {
+  util.checkUser(req, res);
+});
+
+app.get('/login', (req, res)=>{
+  res.render('login');
+});
+
+app.post('/login', (req, res)=>{
+  db.knex('users')
+    .where({username: req.body.username, password: req.body.password})
+    .then((rows)=>{
+      if (rows.length > 0) {
+        req.session.isValid = 'true';
+        res.redirect('/');
+      } else {
+        res.redirect('/login');
+      }
+    });
+});
+
+app.get('/signup', (req, res) => {
+  res.render('signup');
+});
+
+app.post('/signup', (req, res) => {
+  sess = req.session;
+  new User({username: req.body.username, password: req.body.password})
+    .save().then(()=>{
+      console.log('User created... I think');
+      sess.isValid = 'true';
+      res.redirect('/');
+    });
+});
+
+app.get('/logout', (req, res)=> {
+  req.session.destroy((err)=> {
+    if (err) {
+      console.log(err);
+      res.sendStatus(500);
+      return;
+    }
+    res.redirect('/login');
+  });
 });
 
 app.get('/create', 
 function(req, res) {
-  res.render('index');
+  util.checkUser(req, res);
 });
 
 app.get('/links', 
 function(req, res) {
-  Links.reset().fetch().then(function(links) {
-    res.status(200).send(links.models);
-  });
+  if (req.session.isValid === 'true') {
+    Links.reset().fetch().then(function(links) {
+      res.status(200).send(links.models);
+    });
+  } else {
+    res.redirect('/');
+  }
 });
 
 app.post('/links', 
