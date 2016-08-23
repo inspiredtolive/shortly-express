@@ -161,7 +161,7 @@ function(req, res) {
   db.knex('users')
     .where({username: req.user.username})
     .then((rows)=>{
-      Links.reset().query().where({userId: rows[0].id}).fetch().then(function(links) {
+      Links.reset().query('where', 'userId', '=', rows[0].id).fetch().then(function(links) {
         res.status(200).send(links.models);
       });
     });
@@ -195,7 +195,7 @@ function(req, res) {
               url: uri,
               title: title,
               baseUrl: req.headers.origin,
-              userId: userId
+              userId: rows[0].id
             })
             .then(function(newLink) {
               res.status(200).send(newLink);
