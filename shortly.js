@@ -30,7 +30,7 @@ passport.use(new GithubStrategy(
     // placeholder for translating profile into your own custom user object.
     // for now we will just use the profile object returned by GitHub
     // console.log('GITHUB PROFILE', profile);
-    return done(null, profile);
+    return done(null, {username: profile.username});
   }
 ));
 app.use(session({secret: 'ssshhhhh'}));
@@ -42,6 +42,9 @@ passport.serializeUser(function(user, done) {
   // placeholder for custom user serialization
   // null is for errors
   // console.log('serializeuser!!!', user);
+  new User({username: user.username}).save()
+    .then(()=>console.log('User Created'))
+    .catch((error)=>console.log('Duplicate?', error));
   done(null, user);
 });
 
@@ -81,13 +84,13 @@ app.get('/logout', function(req, res) {
 });
 
 var ensureAuthenticated = function(req, res, next) {
-  console.log(req.url, req.isAuthenticated());
   if (req.isAuthenticated()) { return next(); }
   res.redirect('/login');
 };
 
 //REST OF APP
 app.get('/', ensureAuthenticated, function(req, res) {
+  console.log(req.user.username);
   res.render('index');
 });
 
@@ -148,17 +151,20 @@ app.post('/signup', (req, res) => {
 //   });
 // });
 
-app.get('/create', ensureAuthenticated, 
-function(req, res) {
-  // util.checkUser(req, res);
+app.get('/create', ensureAuthenticated, function(req, res) {
+  res.render('index');
 });
 
 app.get('/links', ensureAuthenticated,
 function(req, res) {
   // if (req.session.isValid === 'true') {
-  Links.reset().fetch().then(function(links) {
-    res.status(200).send(links.models);
-  });
+  db.knex('users')
+    .where({username: req.user.username})
+    .then((rows)=>{
+      Links.reset().query().where({userId: rows[0].id}).fetch().then(function(links) {
+        res.status(200).send(links.models);
+      });
+    });
   // } else {
   //   res.redirect('/');
   // }
@@ -172,28 +178,32 @@ function(req, res) {
     console.log('Not a valid url: ', uri);
     return res.sendStatus(404);
   }
+  db.knex('users')
+    .where({username: req.user.username})
+    .then((rows)=>{
+      new Link({ url: uri, userId: rows[0].id }).fetch().then(function(found) {
+        if (found) {
+          res.status(200).send(found.attributes);
+        } else {
+          util.getUrlTitle(uri, function(err, title) {
+            if (err) {
+              console.log('Error reading URL heading: ', err);
+              return res.sendStatus(404);
+            }
 
-  new Link({ url: uri }).fetch().then(function(found) {
-    if (found) {
-      res.status(200).send(found.attributes);
-    } else {
-      util.getUrlTitle(uri, function(err, title) {
-        if (err) {
-          console.log('Error reading URL heading: ', err);
-          return res.sendStatus(404);
+            Links.create({
+              url: uri,
+              title: title,
+              baseUrl: req.headers.origin,
+              userId: userId
+            })
+            .then(function(newLink) {
+              res.status(200).send(newLink);
+            });
+          });
         }
-
-        Links.create({
-          url: uri,
-          title: title,
-          baseUrl: req.headers.origin
-        })
-        .then(function(newLink) {
-          res.status(200).send(newLink);
-        });
       });
-    }
-  });
+    });
 });
 
 /************************************************************/
