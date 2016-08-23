@@ -12,7 +12,7 @@ var Link = require('./app/models/link');
 var Click = require('./app/models/click');
 var session = require('express-session');
 var bodyParser = require('body-parser');
-
+var bcrypt = require('bcrypt-nodejs');
 var app = express();
 var sess;
 
@@ -33,18 +33,32 @@ app.get('/', function(req, res) {
 });
 
 app.get('/login', (req, res)=>{
-  res.render('login');
+  if (req.session.loginFail === 'true') {
+    res.render('loginFail');  
+  } else {
+    res.render('login');
+  }
 });
 
 app.post('/login', (req, res)=>{
   db.knex('users')
-    .where({username: req.body.username, password: req.body.password})
+    .where({username: req.body.username})
     .then((rows)=>{
-      if (rows.length > 0) {
-        req.session.isValid = 'true';
-        res.redirect('/');
-      } else {
+      if (rows.length < 1) {
+        req.session.loginFail = 'true';
         res.redirect('/login');
+      } else {
+        bcrypt.compare(req.body.password, rows[0].password, function(err, truth) {
+          console.log(rows[0].password);
+          if (truth) {
+            req.session.isValid = 'true';
+            req.session.loginFail = '';
+            res.redirect('/');
+          } else {
+            req.session.loginFail = 'true';
+            res.redirect('/login');
+          }
+        });
       }
     });
 });
